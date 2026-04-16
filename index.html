@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>MONO</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,700;1,300&family=Unbounded:wght@700;900&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --black: #000; --white: #fff; --off: #f2f2f2; --mid: #888;
+  --border: 2px solid #000;
+  --card-w: 160px; --card-h: 200px; --gap: 20px;
+}
+html, body { width:100%; height:100%; background:var(--white); color:var(--black); overflow:hidden; font-family:'IBM Plex Mono',monospace; }
+
+/* ── LANDING ─────────────────────────────────── */
+#landing { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:100; background:var(--white); transition:opacity .5s,transform .5s; }
+#landing.hide { opacity:0; pointer-events:none; transform:scale(1.03); }
+.l-logo { font-family:'Unbounded',sans-serif; font-weight:900; font-size:clamp(72px,18vw,148px); letter-spacing:-.04em; line-height:1; color:var(--black); text-shadow:6px 6px 0 #bbb; }
+.l-sub { font-size:.58rem; letter-spacing:.28em; color:var(--mid); margin-top:10px; font-style:italic; text-transform:uppercase; }
+.upload-box { margin-top:52px; width:min(380px,86vw); border:var(--border); padding:32px 28px; position:relative; background:var(--white); }
+.upload-box::after { content:''; position:absolute; inset:0; border:var(--border); background:var(--black); transform:translate(5px,5px); z-index:-1; }
+.upload-box.drag { background:var(--off); }
+.upload-box h2 { font-family:'Unbounded',sans-serif; font-size:.8rem; font-weight:700; letter-spacing:.04em; margin-bottom:8px; }
+.upload-box p { font-size:.58rem; color:var(--mid); line-height:2; letter-spacing:.05em; font-style:italic; }
+#folderInput { display:none; }
+.btn { display:block; width:100%; margin-top:20px; padding:13px 0; background:var(--black); color:var(--white); font-family:'Unbounded',sans-serif; font-size:.68rem; font-weight:700; letter-spacing:.12em; border:var(--border); cursor:pointer; text-align:center; position:relative; transition:transform .1s; }
+.btn::after { content:''; position:absolute; inset:0; border:var(--border); background:#777; transform:translate(4px,4px); z-index:-1; }
+.btn:hover { transform:translate(-1px,-1px); } .btn:active { transform:translate(2px,2px); }
+.btn-ghost { background:var(--white); color:var(--black); margin-top:10px; font-family:'IBM Plex Mono',monospace; font-size:.58rem; font-weight:300; letter-spacing:.1em; }
+.btn-ghost::after { display:none; } .btn-ghost:hover { background:var(--off); }
+
+/* ── CANVAS ──────────────────────────────────── */
+#canvas-wrap { position:fixed; inset:0; overflow:hidden; opacity:0; transition:opacity .6s; background:var(--white); }
+#canvas-wrap.visible { opacity:1; }
+#grid { position:absolute; top:0; left:0; will-change:transform; user-select:none; }
+
+/* top bar */
+.top-bar { position:fixed; top:0; left:0; right:0; height:48px; display:flex; align-items:center; padding:0 16px; z-index:50; background:var(--white); border-bottom:var(--border); gap:12px; }
+.top-logo { font-family:'Unbounded',sans-serif; font-weight:900; font-size:.85rem; letter-spacing:.08em; flex-shrink:0; }
+.track-count { font-size:.52rem; color:var(--mid); letter-spacing:.1em; font-style:italic; flex-shrink:0; }
+.search-trigger { margin-left:auto; background:none; border:1.5px solid #ccc; color:var(--mid); font-family:'IBM Plex Mono',monospace; font-size:.55rem; letter-spacing:.1em; padding:5px 12px; cursor:pointer; display:flex; align-items:center; gap:7px; transition:border-color .15s,color .15s; flex-shrink:0; }
+.search-trigger:hover { border-color:var(--black); color:var(--black); }
+.search-trigger kbd { font-size:.44rem; border:1px solid #ccc; padding:1px 4px; }
+
+.pan-hint { position:fixed; bottom:68px; left:50%; transform:translateX(-50%); font-size:.52rem; letter-spacing:.22em; color:var(--mid); z-index:50; transition:opacity 1.2s; pointer-events:none; text-transform:uppercase; }
+.pan-hint.gone { opacity:0; }
+
+/* ── SCROLL-TO-PLAYING DOT ───────────────────── */
+#now-dot { position:fixed; bottom:62px; right:18px; width:10px; height:10px; border-radius:50%; background:var(--black); border:2px solid var(--black); z-index:55; cursor:pointer; opacity:0; pointer-events:none; transition:opacity .4s; }
+#now-dot.visible { opacity:1; pointer-events:auto; }
+#now-dot.playing-pulse { animation:dotPulse 1.4s ease-in-out infinite; }
+@keyframes dotPulse { 0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(0,0,0,.3);} 50%{transform:scale(1.2);box-shadow:0 0 0 5px rgba(0,0,0,0);} }
+
+/* ── CARD ────────────────────────────────────── */
+.card { position:absolute; width:var(--card-w); height:var(--card-h); cursor:pointer; border:var(--border); background:var(--white); box-shadow:4px 4px 0 #000; transition:transform .22s cubic-bezier(.2,.8,.3,1),box-shadow .22s,opacity .25s; overflow:hidden; transform:rotate(var(--tilt,0deg)); }
+.card:hover  { transform:rotate(0deg) translate(-2px,-2px); box-shadow:6px 6px 0 #000; z-index:10; }
+.card:active { transform:rotate(0deg) translate(2px,2px);   box-shadow:2px 2px 0 #000; }
+/* search states */
+.card.dimmed { opacity:.18; pointer-events:none; }
+.card.match { opacity:1; pointer-events:auto; }
+
+.card-art { width:100%; height:110px; object-fit:cover; display:block; border-bottom:var(--border); filter:grayscale(1) contrast(1.2); }
+.card-ph { width:100%; height:110px; display:block; border-bottom:var(--border); }
+
+.card-body { padding:8px 10px; height:calc(var(--card-h) - 110px); display:flex; flex-direction:column; justify-content:center; overflow:hidden; }
+
+/* marquee wrapper — clips the scrolling text */
+.card-title-wrap,
+.card-sub-wrap { overflow:hidden; position:relative; }
+
+.card-title { font-size:.56rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; white-space:nowrap; display:inline-block; }
+.card-sub   { font-size:.5rem; color:var(--mid); margin-top:2px; font-style:italic; white-space:nowrap; display:inline-block; }
+
+/* only scroll if text overflows — JS adds .overflows class */
+.card:hover .card-title.overflows { animation:marquee 4s linear infinite; animation-delay:.4s; }
+.card:hover .card-sub.overflows   { animation:marquee 4s linear infinite; animation-delay:.6s; }
+
+/* reset on mouse-leave instantly */
+.card-title, .card-sub { animation:none; }
+
+@keyframes marquee {
+  0%     { transform:translateX(0); }
+  10%    { transform:translateX(0); }
+  85%    { transform:translateX(var(--scroll-w, -60px)); }
+  100%   { transform:translateX(var(--scroll-w, -60px)); }
+}
+.card-num { position:absolute; top:6px; right:7px; font-size:.45rem; color:rgba(255,255,255,.28); font-weight:700; }
+.card-play { position:absolute; inset:0; background:var(--black); opacity:0; transition:opacity .14s; display:flex; align-items:center; justify-content:center; padding-bottom:calc(var(--card-h) - 110px); }
+.card:hover .card-play { opacity:.9; }
+.play-tri { width:0; height:0; border-left:20px solid var(--white); border-top:13px solid transparent; border-bottom:13px solid transparent; margin-left:5px; }
+.card.playing { box-shadow:5px 5px 0 #000; }
+.card.playing::after { content:''; position:absolute; bottom:0; left:0; right:0; height:3px; background:var(--black); animation:blink .5s steps(1) infinite; }
+/* mood: pattern breathes on playing card */
+.card.playing .card-ph { animation:patternBreathe 3s ease-in-out infinite; }
+.card.playing.paused-card .card-ph { animation-play-state:paused; }
+@keyframes patternBreathe { 0%,100%{opacity:1;} 50%{opacity:.55;} }
+@keyframes blink { 50%{opacity:0;} }
+@keyframes cardIn { from{opacity:0;transform:translateY(10px) scale(.96);} to{opacity:1;transform:translateY(0) scale(1);} }
+.card { animation:cardIn .28s ease both; }
+
+/* ── SEARCH OVERLAY ──────────────────────────── */
+#search-overlay { position:fixed; inset:0; z-index:150; background:rgba(255,255,255,.97); display:flex; flex-direction:column; align-items:center; padding-top:80px; opacity:0; pointer-events:none; transition:opacity .2s; }
+#search-overlay.open { opacity:1; pointer-events:all; }
+.search-wrap { width:min(500px,88vw); position:relative; }
+#search-input { width:100%; background:var(--white); border:var(--border); font-family:'Unbounded',sans-serif; font-weight:700; font-size:clamp(1.2rem,4vw,2rem); letter-spacing:-.02em; padding:16px 48px 16px 16px; outline:none; color:var(--black); }
+#search-input::placeholder { color:#ccc; }
+.search-close { position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; font-size:1.1rem; cursor:pointer; color:var(--mid); font-family:'IBM Plex Mono',monospace; }
+.search-close:hover { color:var(--black); }
+.search-count { margin-top:14px; font-size:.6rem; color:var(--mid); letter-spacing:.15em; font-style:italic; }
+
+/* ── FULLSCREEN PLAYER ───────────────────────── */
+#player { position:fixed; inset:0; z-index:200; display:flex; flex-direction:column; align-items:center; justify-content:center; background:var(--black); opacity:0; pointer-events:none; transition:opacity .3s; }
+#player.open { opacity:1; pointer-events:all; }
+#pbg { position:absolute; inset:-20px; background-size:cover; background-position:center; filter:grayscale(1) contrast(1.4) blur(60px) brightness(.06); transform:scale(1.14); opacity:0; transition:opacity .5s, transform .12s ease-out; }
+#player.open #pbg { opacity:1; }
+.p-close { position:absolute; top:16px; right:16px; width:36px; height:36px; border:2px solid #333; background:transparent; color:#666; font-size:.8rem; cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:'Unbounded',sans-serif; font-weight:700; z-index:1; transition:border-color .15s,color .15s; }
+.p-close:hover { border-color:var(--white); color:var(--white); }
+
+.p-inner { position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; width:min(340px,84vw); perspective:900px; }
+.p-frame { width:min(210px,56vw); height:min(210px,56vw); border:2px solid var(--white); position:relative; margin-bottom:24px; flex-shrink:0; background:#111; transition:transform .1s ease-out; transform-style:preserve-3d; will-change:transform; }
+.p-frame::before { content:''; position:absolute; inset:0; border:2px solid rgba(255,255,255,.25); z-index:-1; animation:shadowOrbit 5s linear infinite; }
+.p-frame.paused::before { animation-play-state:paused; }
+@keyframes shadowOrbit { 0%{transform:translate(7px,7px)} 25%{transform:translate(-7px,7px)} 50%{transform:translate(-7px,-7px)} 75%{transform:translate(7px,-7px)} 100%{transform:translate(7px,7px)} }
+#p-img { width:100%; height:100%; object-fit:cover; display:block; filter:grayscale(1) contrast(1.15); }
+#p-ph { width:100%; height:100%; display:block; background:#111; }
+
+#p-title { font-family:'Unbounded',sans-serif; font-weight:900; font-size:clamp(1.1rem,5vw,1.55rem); letter-spacing:-.02em; color:var(--white); text-align:center; line-height:1.1; margin-bottom:4px; text-transform:uppercase; }
+#p-artist { font-size:.56rem; letter-spacing:.2em; color:#777; text-transform:uppercase; font-style:italic; margin-bottom:20px; }
+
+.p-prog-row { width:100%; display:flex; align-items:center; gap:8px; margin-bottom:18px; }
+.p-t { font-size:.5rem; color:#444; min-width:28px; letter-spacing:.04em; }
+.p-t.r { text-align:right; }
+.p-bar { flex:1; height:1px; background:#222; cursor:pointer; position:relative; }
+.p-fill { height:100%; background:var(--white); width:0%; pointer-events:none; }
+.p-thumb { width:7px; height:7px; background:var(--white); border:1.5px solid var(--black); position:absolute; top:50%; transform:translate(-50%,-50%); left:0%; pointer-events:none; transition:left .18s linear; }
+
+.p-ctrl { display:flex; align-items:stretch; border:2px solid #555; width:100%; margin-bottom:14px; }
+.pb { flex:1; background:transparent; border:none; border-right:2px solid #555; color:#ccc; font-size:.7rem; cursor:pointer; padding:12px 0; display:flex; align-items:center; justify-content:center; transition:background .12s,color .12s; font-family:'IBM Plex Mono',monospace; }
+.pb:last-child { border-right:none; }
+.pb:hover { background:rgba(255,255,255,.1); color:var(--white); }
+.pb:active { background:rgba(255,255,255,.18); }
+.pb.play-main { background:var(--white); color:var(--black); font-size:.9rem; border-right:2px solid #555; }
+.pb.play-main:hover { background:#ddd; } .pb.play-main:active { background:#bbb; }
+.pb.on { color:var(--white); }
+
+.p-vol { display:flex; align-items:center; gap:8px; width:100%; }
+.p-vl { font-size:.48rem; color:#444; letter-spacing:.1em; }
+input[type=range] { -webkit-appearance:none; flex:1; height:1px; background:#222; outline:none; cursor:pointer; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:10px; height:10px; background:var(--white); border:1.5px solid var(--black); }
+
+/* ── MINI PLAYER ─────────────────────────────── */
+#mini { position:fixed; bottom:0; left:0; right:0; height:50px; background:var(--black); border-top:2px solid #1a1a1a; display:flex; align-items:center; padding:0 14px; gap:12px; z-index:60; transform:translateY(100%); transition:transform .3s cubic-bezier(.4,0,.2,1); cursor:pointer; }
+#mini.up { transform:translateY(0); }
+.m-art { width:32px; height:32px; border:1.5px solid #222; flex-shrink:0; overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:.9rem; }
+.m-art img { width:100%; height:100%; object-fit:cover; filter:grayscale(1); }
+.m-art svg { width:100%; height:100%; }
+.m-info { flex:1; min-width:0; }
+.m-title { font-size:.56rem; font-weight:700; color:var(--white); text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.m-artist { font-size:.48rem; color:#444; font-style:italic; margin-top:2px; }
+.m-btn { background:none; border:1.5px solid #222; color:#555; width:26px; height:26px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:.6rem; flex-shrink:0; transition:border-color .15s,color .15s; }
+.m-btn:hover { border-color:#666; color:var(--white); }
+.m-prog { position:absolute; bottom:0; left:0; height:1px; background:var(--white); width:0%; transition:width .18s linear; pointer-events:none; }
+</style>
+</head>
+<body>
+
+<!-- LANDING -->
+<div id="landing">
+  <div class="l-logo">MONO</div>
+  <div class="l-sub">a music player</div>
+  <div class="upload-box" id="dropZone">
+    <h2>Load your music</h2>
+    <p>Select a folder or drop audio files<br>MP3 · FLAC · WAV · OGG · M4A · AAC</p>
+    <input type="file" id="folderInput" webkitdirectory multiple accept="audio/*,.mp3,.flac,.wav,.ogg,.m4a,.aac,.opus">
+    <button class="btn" onclick="document.getElementById('folderInput').click()">SELECT FOLDER</button>
+    <button class="btn btn-ghost" id="demoBtn">try demo</button>
+  </div>
+</div>
+
+<!-- CANVAS -->
+<div id="canvas-wrap">
+  <div class="top-bar">
+    <span class="top-logo">MONO</span>
+    <span class="track-count" id="tcount"></span>
+    <button class="search-trigger" id="searchTrigger">SEARCH <kbd>/</kbd></button>
+  </div>
+  <div id="grid"></div>
+  <div class="pan-hint" id="panHint">drag to explore</div>
+  <div id="now-dot" title="Go to playing track"></div>
+</div>
+
+<!-- SEARCH OVERLAY -->
+<div id="search-overlay">
+  <div class="search-wrap">
+    <input type="text" id="search-input" placeholder="TYPE TO SEARCH..." autocomplete="off" spellcheck="false">
+    <button class="search-close" id="searchClose">✕</button>
+    <div class="search-count" id="searchCount"></div>
+  </div>
+</div>
+
+<!-- PLAYER -->
+<div id="player">
+  <div id="pbg"></div>
+  <button class="p-close" id="closeBtn">✕</button>
+  <div class="p-inner">
+    <div class="p-frame" id="artFrame">
+      <img id="p-img" style="display:none" alt="">
+      <div id="p-ph"></div>
+    </div>
+    <div id="p-title">—</div>
+    <div id="p-artist">—</div>
+    <div class="p-prog-row">
+      <span class="p-t" id="curT">0:00</span>
+      <div class="p-bar" id="pBar">
+        <div class="p-fill" id="pFill"></div>
+        <div class="p-thumb" id="pThumb"></div>
+      </div>
+      <span class="p-t r" id="durT">0:00</span>
+    </div>
+    <div class="p-ctrl">
+      <button class="pb" id="prevBtn">⏮</button>
+      <button class="pb" id="shufBtn">⇌</button>
+      <button class="pb play-main" id="ppBtn">▶</button>
+      <button class="pb" id="loopBtn">↻</button>
+      <button class="pb" id="nextBtn">⏭</button>
+    </div>
+    <div class="p-vol">
+      <span class="p-vl">VOL</span>
+      <input type="range" id="vol" min="0" max="1" step="0.01" value="0.8">
+    </div>
+  </div>
+</div>
+
+<!-- MINI -->
+<div id="mini" onclick="openPlayer()">
+  <div class="m-art" id="mArt"></div>
+  <div class="m-info">
+    <div class="m-title" id="mTitle">—</div>
+    <div class="m-artist" id="mArtist">—</div>
+  </div>
+  <button class="m-btn" id="mPP" onclick="event.stopPropagation();togglePlay()">▶</button>
+  <button class="m-btn" onclick="event.stopPropagation();playNext()">⏭</button>
+  <div class="m-prog" id="mProg"></div>
+</div>
+
+<audio id="aud"></audio>
+
+<script>
+/* ═══════════════════════════════════
+   STATE
+═══════════════════════════════════ */
+let tracks=[], idx=-1, playing=false, shuffle=false, loop=false;
+let panX=0, panY=0, velX=0, velY=0;
+let dragging=false, wasDrag=false, startX, startY, raf=null;
+
+/* ═══════════════════════════════════
+   UNIQUE PATTERN GENERATOR
+   Mulberry32 PRNG seeded per track
+═══════════════════════════════════ */
+function fnv1a(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+function makePRNG(seed) {
+  let s = seed >>> 0;
+  return function() {
+    s += 0x6d2b79f5;
+    let t = Math.imul(s ^ s>>>15, 1|s);
+    t ^= t + Math.imul(t ^ t>>>7, 61|t);
+    return ((t ^ t>>>14) >>> 0) / 4294967296;
+  };
+}
+
+function makePatternSVG(seed, small) {
+  const W = small ? 32 : 160;
+  const H = small ? 32 : 110;
+  const hash = fnv1a(seed);
+  const rng  = makePRNG(hash);
+  const type = hash % 6;
+  let shapes = '';
+
+  if (type === 0) {
+    // variable-size squares grid
+    const sz = Math.max(4, (8 + rng()*14)|0);
+    const sp = sz + 2 + (rng()*6)|0;
+    for (let x=0; x<W; x+=sp) for (let y=0; y<H; y+=sp) {
+      const w = (sz*(0.4+rng()*0.6)).toFixed(1);
+      shapes += `<rect x="${x}" y="${y}" width="${w}" height="${w}" fill="white" opacity="${(0.12+rng()*0.5).toFixed(2)}"/>`;
+    }
+  } else if (type === 1) {
+    // diagonal stripes
+    const sp = Math.max(6, (8+rng()*20)|0);
+    const sw = (0.8+rng()*2.4).toFixed(1);
+    for (let i=-H; i<W+H; i+=sp)
+      shapes += `<line x1="${i}" y1="0" x2="${i+H}" y2="${H}" stroke="white" stroke-width="${sw}" opacity="${(0.2+rng()*0.5).toFixed(2)}"/>`;
+  } else if (type === 2) {
+    // scattered circles
+    const count = small ? 4 : (5+(rng()*8)|0);
+    for (let i=0; i<count; i++) {
+      const cx=(rng()*W).toFixed(1), cy=(rng()*H).toFixed(1);
+      const r=(4+rng()*Math.min(W,H)*.45).toFixed(1);
+      const sw=(0.6+rng()*2).toFixed(1);
+      shapes += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="white" stroke-width="${sw}" opacity="${(0.18+rng()*0.45).toFixed(2)}"/>`;
+    }
+  } else if (type === 3) {
+    // triangles
+    const count = small ? 3 : (4+(rng()*7)|0);
+    for (let i=0; i<count; i++) {
+      const x=(rng()*(W-20)).toFixed(1), y=(rng()*(H-20)).toFixed(1);
+      const s=(10+rng()*Math.min(W,H)*.4).toFixed(1);
+      const fx=parseFloat(x), fy=parseFloat(y), fs=parseFloat(s);
+      shapes += `<polygon points="${fx},${fy+fs} ${fx+fs},${fy+fs} ${fx+fs/2},${fy}" fill="white" opacity="${(0.14+rng()*0.44).toFixed(2)}"/>`;
+    }
+  } else if (type === 4) {
+    // crosshatch
+    const sp = Math.max(6, (10+rng()*14)|0);
+    const op = (0.1+rng()*0.22).toFixed(2);
+    for (let i=0; i<W+H; i+=sp) {
+      shapes += `<line x1="${i}" y1="0" x2="${i-H}" y2="${H}" stroke="white" stroke-width="1" opacity="${op}"/>`;
+      shapes += `<line x1="${i-H}" y1="0" x2="${i}" y2="${H}" stroke="white" stroke-width="1" opacity="${op}"/>`;
+    }
+  } else {
+    // dot field
+    const sp = Math.max(6, (10+rng()*10)|0);
+    for (let x=sp/2; x<W; x+=sp) for (let y=sp/2; y<H; y+=sp) {
+      const r=(0.8+rng()*3).toFixed(1);
+      const jx=(x+rng()*sp*.3-sp*.15).toFixed(1);
+      const jy=(y+rng()*sp*.3-sp*.15).toFixed(1);
+      shapes += `<circle cx="${jx}" cy="${jy}" r="${r}" fill="white" opacity="${(0.12+rng()*0.5).toFixed(2)}"/>`;
+    }
+  }
+
+  // initials watermark (card only)
+  if (!small) {
+    const letters = seed.replace(/[^a-zA-Z]/g,'').slice(0,2).toUpperCase() || '♪';
+    shapes += `<text x="${W/2}" y="${H/2}" font-family="monospace" font-size="40" font-weight="bold" fill="white" opacity="0.06" text-anchor="middle" dominant-baseline="middle">${letters}</text>`;
+  }
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="100%" height="100%" fill="black"/>${shapes}</svg>`;
+  return 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+
+/* ═══════════════════════════════════
+   DEMO DATA
+═══════════════════════════════════ */
+const DEMO = [
+  {n:'Dead Frequencies',a:'Signal Loss'}, {n:'White Room',a:'Null Space'},
+  {n:'Static Bloom',a:'Greyfield'},       {n:'Pale Archive',a:'Monolith'},
+  {n:'Hollow Coast',a:'Drift'},           {n:'Iron Shore',a:'Concrete Echo'},
+  {n:'Null Garden',a:'Absence'},          {n:'Flat Light',a:'Overcast'},
+  {n:'Bone Circuit',a:'Zero Point'},      {n:'Grey Matter',a:'Substrata'},
+  {n:'Lost Signal',a:'Antenna'},          {n:'Still Frame',a:'Afterimage'},
+  {n:'Cold Archive',a:'Remnant'},         {n:'Pale Draft',a:'Rough Cut'},
+  {n:'Empty Vessel',a:'Hollow'},          {n:'Dark Matter',a:'Event Horizon'},
+  {n:'Slow Burn',a:'Ember State'},        {n:'Wire Garden',a:'Circuit Moss'},
+];
+
+/* ═══════════════════════════════════
+   FILE LOAD
+═══════════════════════════════════ */
+document.getElementById('folderInput').addEventListener('change', e => {
+  const files = Array.from(e.target.files).filter(f =>
+    f.type.startsWith('audio/') || /\.(mp3|flac|wav|ogg|m4a|aac|opus)$/i.test(f.name));
+  if (!files.length) return alert('No audio files found.');
+  loadFiles(files);
+});
+
+document.getElementById('demoBtn').addEventListener('click', () => {
+  tracks = DEMO.map(d => ({
+    name: d.n, artist: d.a,
+    url: null, art: null,
+    pattern: makePatternSVG(d.n + d.a, false),
+    patternSmall: makePatternSVG(d.n + d.a, true),
+    demo: true
+  }));
+  buildGrid();
+});
+
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  const files = Array.from(e.dataTransfer.items).map(i => i.getAsFile())
+    .filter(f => f && (f.type.startsWith('audio/') || /\.(mp3|flac|wav|ogg|m4a|aac|opus)$/i.test(f.name)));
+  if (files.length) loadFiles(files);
+});
+
+function loadFiles(files) {
+  tracks = files.map(f => {
+    const name = f.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+    return {
+      name, artist: '—',
+      url: URL.createObjectURL(f),
+      art: null,
+      pattern: makePatternSVG(name, false),
+      patternSmall: makePatternSVG(name, true),
+      demo: false
+    };
+  });
+  buildGrid();
+}
+
+/* ═══════════════════════════════════
+   GRID
+═══════════════════════════════════ */
+function buildGrid() {
+  document.getElementById('landing').classList.add('hide');
+  setTimeout(() => document.getElementById('canvas-wrap').classList.add('visible'), 80);
+  document.getElementById('tcount').textContent = tracks.length + ' tracks';
+
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+
+  const cw = 160, ch = 200, gap = 20;
+  const cols = Math.max(4, Math.ceil(Math.sqrt(tracks.length * 1.4)));
+  const totalW = cols*(cw+gap)+gap;
+  const totalH = Math.ceil(tracks.length/cols)*(ch+gap)+gap;
+  grid.style.width = totalW+'px';
+  grid.style.height = totalH+'px';
+
+  panX = (window.innerWidth - totalW) / 2;
+  panY = (window.innerHeight - totalH) / 2;
+  setTransform();
+
+  tracks.forEach((t, i) => {
+    const col = i % cols, row = Math.floor(i / cols);
+    const x = gap + col*(cw+gap), y = gap + row*(ch+gap);
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    // deterministic tilt: ±2° from track name hash
+    const tiltHash = fnv1a(t.name + i);
+    const tilt = ((tiltHash % 400) / 100 - 2).toFixed(2); // -2.00 to +1.99 deg
+    card.style.cssText = `left:${x}px;top:${y}px;animation-delay:${i*.022}s;--tilt:${tilt}deg`;
+    card.dataset.i = i;
+
+    // art: real image or unique SVG pattern
+    const artHtml = t.art
+      ? `<img class="card-art" src="${t.art}" alt="">`
+      : `<img class="card-ph" src="${t.pattern}" alt="" draggable="false">`;
+
+    card.innerHTML = `
+      ${artHtml}
+      <div class="card-body">
+        <div class="card-title-wrap"><span class="card-title">${t.name}</span></div>
+        <div class="card-sub-wrap"><span class="card-sub">${t.artist}</span></div>
+      </div>
+      <div class="card-num">${String(i+1).padStart(2,'0')}</div>
+      <div class="card-play"><div class="play-tri"></div></div>`;
+
+    card.addEventListener('click', () => { if (!wasDrag) playTrack(i); });
+    grid.appendChild(card);
+  });
+
+  setupPan();
+  setTimeout(() => document.getElementById('panHint').classList.add('gone'), 3500);
+  // measure after paint so widths are available
+  requestAnimationFrame(measureOverflow);
+}
+
+/* ═══════════════════════════════════
+   MARQUEE — measure overflow once per build
+═══════════════════════════════════ */
+function measureOverflow() {
+  document.querySelectorAll('.card-title, .card-sub').forEach(el => {
+    const wrap = el.parentElement;
+    const overflow = el.scrollWidth - wrap.clientWidth;
+    if (overflow > 2) {
+      el.classList.add('overflows');
+      // set custom property so animation scrolls exactly the right distance
+      el.style.setProperty('--scroll-w', `-${overflow + 8}px`);
+    } else {
+      el.classList.remove('overflows');
+    }
+  });
+}
+
+/* ═══════════════════════════════════
+   PAN + MOMENTUM  (listeners added once)
+═══════════════════════════════════ */
+function setTransform() {
+  document.getElementById('grid').style.transform = `translate(${panX}px,${panY}px)`;
+  checkNowDot();
+}
+
+let _panReady = false;
+function setupPan() {
+  if (_panReady) return;
+  _panReady = true;
+
+  const wrap = document.getElementById('canvas-wrap');
+  let lx, ly, lt;
+
+  function dn(x, y) {
+    dragging=true; wasDrag=false;
+    startX=x-panX; startY=y-panY;
+    lx=x; ly=y; lt=Date.now();
+    velX=velY=0; cancelAnimationFrame(raf);
+    wrap.style.cursor='grabbing';
+  }
+  function mv(x, y) {
+    if (!dragging) return;
+    if (Math.abs(x-startX-panX)>6 || Math.abs(y-startY-panY)>6) wasDrag=true;
+    const dt = Date.now()-lt || 1;
+    velX=(x-lx)/dt*14; velY=(y-ly)/dt*14;
+    lx=x; ly=y; lt=Date.now();
+    panX=x-startX; panY=y-startY;
+    setTransform();
+  }
+  function up() {
+    if (!dragging) return;
+    dragging=false; wrap.style.cursor='';
+    momentum();
+    // reset wasDrag after click event has fired
+    setTimeout(() => { wasDrag=false; }, 80);
+  }
+
+  wrap.addEventListener('mousedown', e => dn(e.clientX, e.clientY));
+  window.addEventListener('mousemove', e => mv(e.clientX, e.clientY));
+  window.addEventListener('mouseup', up);
+
+  wrap.addEventListener('touchstart', e => {
+    const t = e.touches[0]; dn(t.clientX, t.clientY);
+  }, {passive:true});
+  window.addEventListener('touchmove', e => {
+    const t = e.touches[0]; mv(t.clientX, t.clientY);
+  }, {passive:true});
+  window.addEventListener('touchend', up);
+
+  wrap.addEventListener('wheel', e => {
+    e.preventDefault();
+    panX -= e.deltaX * .6; panY -= e.deltaY * .6;
+    setTransform();
+  }, {passive:false});
+}
+
+function momentum() {
+  const fr = 0.91;
+  function step() {
+    velX*=fr; velY*=fr;
+    if (Math.abs(velX)<0.08 && Math.abs(velY)<0.08) return;
+    panX+=velX; panY+=velY;
+    setTransform();
+    raf = requestAnimationFrame(step);
+  }
+  raf = requestAnimationFrame(step);
+}
+
+/* ── SCROLL-TO-PLAYING DOT ─────────────────── */
+function checkNowDot() {
+  const dot = document.getElementById('now-dot');
+  if (idx < 0 || !playing) { dot.classList.remove('visible','playing-pulse'); return; }
+  // get card screen position
+  const cw=160, ch=200, gap=20;
+  const cols = Math.max(4, Math.ceil(Math.sqrt(tracks.length*1.4)));
+  const col = idx%cols, row = Math.floor(idx/cols);
+  const cx = panX + gap + col*(cw+gap);
+  const cy = panY + gap + row*(ch+gap);
+  const inView = cx > 48 && cy > 48 && cx+cw < window.innerWidth && cy+ch < window.innerHeight - 50;
+  dot.classList.toggle('visible', !inView);
+  dot.classList.toggle('playing-pulse', !inView);
+}
+
+document.getElementById('now-dot').addEventListener('click', () => {
+  if (idx < 0) return;
+  scrollToCard(idx);
+});
+
+/* ═══════════════════════════════════
+   SEARCH
+═══════════════════════════════════ */
+let searchOpen = false;
+
+function openSearch() {
+  searchOpen = true;
+  document.getElementById('search-overlay').classList.add('open');
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-input').focus();
+  document.getElementById('searchCount').textContent = '';
+  // reset card states
+  document.querySelectorAll('.card').forEach(c => c.classList.remove('dimmed','match'));
+}
+
+function closeSearch() {
+  searchOpen = false;
+  document.getElementById('search-overlay').classList.remove('open');
+  document.querySelectorAll('.card').forEach(c => c.classList.remove('dimmed','match'));
+  document.getElementById('searchCount').textContent = '';
+}
+
+function applySearch(q) {
+  q = q.toLowerCase().trim();
+  const cards = document.querySelectorAll('.card');
+  if (!q) {
+    cards.forEach(c => c.classList.remove('dimmed','match'));
+    document.getElementById('searchCount').textContent = '';
+    return;
+  }
+  let hits = 0;
+  cards.forEach(c => {
+    const t = tracks[parseInt(c.dataset.i)];
+    const match = (t.name + ' ' + t.artist).toLowerCase().includes(q);
+    c.classList.toggle('dimmed', !match);
+    c.classList.toggle('match', match);
+    if (match) hits++;
+  });
+  document.getElementById('searchCount').textContent =
+    hits ? hits + ' result' + (hits!==1?'s':'') : 'no results';
+}
+
+function scrollToCard(i) {
+  const cw=160, ch=200, gap=20;
+  const cols = Math.max(4, Math.ceil(Math.sqrt(tracks.length*1.4)));
+  const col = i%cols, row = Math.floor(i/cols);
+  const cx = gap + col*(cw+gap) + cw/2;
+  const cy = gap + row*(ch+gap) + ch/2;
+  panX = window.innerWidth/2 - cx;
+  panY = window.innerHeight/2 - cy;
+  setTransform();
+}
+
+document.getElementById('searchTrigger').addEventListener('click', openSearch);
+document.getElementById('searchClose').addEventListener('click', closeSearch);
+document.getElementById('search-input').addEventListener('input', e => applySearch(e.target.value));
+document.getElementById('search-input').addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeSearch(); return; }
+  if (e.key === 'Enter') {
+    const first = document.querySelector('.card.match');
+    if (first) { closeSearch(); scrollToCard(parseInt(first.dataset.i)); }
+  }
+});
+
+/* ═══════════════════════════════════
+   PLAYBACK
+═══════════════════════════════════ */
+const aud = document.getElementById('aud');
+let demoT=0, demoDur=200, demoIv=null;
+
+function playTrack(i) {
+  document.querySelectorAll('.card.playing').forEach(c => c.classList.remove('playing'));
+  idx = i;
+  const t = tracks[i];
+  const card = document.querySelector(`.card[data-i="${i}"]`);
+  if (card) card.classList.add('playing');
+
+  if (t.demo) {
+    playing=true; clearInterval(demoIv);
+    demoT=0; demoDur=150+Math.random()*90;
+    demoIv = setInterval(() => {
+      if (!playing) return;
+      demoT += .2;
+      if (demoT >= demoDur) { playNext(); return; }
+      updateProg(demoT/demoDur, demoT, demoDur);
+    }, 200);
+    updateUI(t); openPlayer(); return;
+  }
+
+  aud.src = t.url;
+  aud.volume = parseFloat(document.getElementById('vol').value);
+  aud.play().then(() => { playing=true; updateUI(t); openPlayer(); }).catch(console.warn);
+}
+
+aud.addEventListener('timeupdate', () => {
+  if (aud.duration) updateProg(aud.currentTime/aud.duration, aud.currentTime, aud.duration);
+});
+aud.addEventListener('ended', () => loop ? aud.play() : playNext());
+aud.addEventListener('play',  () => { playing=true;  syncUI(); document.getElementById('artFrame').classList.remove('paused'); });
+aud.addEventListener('pause', () => { playing=false; syncUI(); document.getElementById('artFrame').classList.add('paused'); });
+
+function togglePlay() {
+  if (tracks[idx]?.demo) {
+    playing = !playing; syncUI();
+    document.getElementById('artFrame').classList.toggle('paused', !playing);
+    return;
+  }
+  aud.paused ? aud.play() : aud.pause();
+}
+function playNext() {
+  const n = shuffle ? Math.floor(Math.random()*tracks.length) : (idx+1)%tracks.length;
+  playTrack(n);
+}
+function playPrev() {
+  const cur = tracks[idx]?.demo ? demoT : aud.currentTime;
+  if (cur > 3) { if (tracks[idx]?.demo) demoT=0; else aud.currentTime=0; return; }
+  playTrack((idx-1+tracks.length)%tracks.length);
+}
+
+function updateProg(pct, cur, dur) {
+  document.getElementById('pFill').style.width   = (pct*100)+'%';
+  document.getElementById('pThumb').style.left   = (pct*100)+'%';
+  document.getElementById('mProg').style.width   = (pct*100)+'%';
+  document.getElementById('curT').textContent    = fmt(cur);
+  document.getElementById('durT').textContent    = fmt(dur);
+}
+function fmt(s) { return `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`; }
+
+function updateUI(t) {
+  document.getElementById('p-title').textContent  = t.name.toUpperCase();
+  document.getElementById('p-artist').textContent = t.artist || '—';
+  document.getElementById('mTitle').textContent   = t.name.toUpperCase();
+  document.getElementById('mArtist').textContent  = t.artist || '—';
+  document.getElementById('mini').classList.add('up');
+
+  const img = document.getElementById('p-img');
+  const ph  = document.getElementById('p-ph');
+
+  if (t.art) {
+    img.src = t.art; img.style.display = 'block'; ph.style.display = 'none';
+    document.getElementById('pbg').style.backgroundImage = `url(${t.art})`;
+    document.getElementById('mArt').innerHTML = `<img src="${t.art}" alt="">`;
+  } else {
+    img.style.display = 'none'; ph.style.display = 'block';
+    // show pattern in fullscreen player art frame too
+    ph.innerHTML = `<img src="${t.pattern}" style="width:100%;height:100%;display:block;" alt="">`;
+    document.getElementById('pbg').style.backgroundImage = '';
+    // mini art: small pattern
+    document.getElementById('mArt').innerHTML = `<img src="${t.patternSmall}" style="width:32px;height:32px;display:block;" alt="">`;
+  }
+  syncUI();
+}
+
+function syncUI() {
+  document.getElementById('ppBtn').textContent = playing ? '⏸' : '▶';
+  document.getElementById('mPP').textContent   = playing ? '⏸' : '▶';
+  // mood: toggle paused-card class so breathe animation pauses
+  const playingCard = document.querySelector('.card.playing');
+  if (playingCard) playingCard.classList.toggle('paused-card', !playing);
+  checkNowDot();
+}
+
+function openPlayer()  { document.getElementById('player').classList.add('open'); }
+function closePlayer() { document.getElementById('player').classList.remove('open'); }
+
+/* ═══════════════════════════════════
+   PLAYER SWIPE (down to close, left/right to skip)
+═══════════════════════════════════ */
+let swipeX0=null, swipeY0=null, swipeT0=null;
+document.getElementById('player').addEventListener('touchstart', e => {
+  swipeX0=e.touches[0].clientX; swipeY0=e.touches[0].clientY; swipeT0=Date.now();
+}, {passive:true});
+document.getElementById('player').addEventListener('touchend', e => {
+  if (swipeX0===null) return;
+  const dx=e.changedTouches[0].clientX-swipeX0;
+  const dy=e.changedTouches[0].clientY-swipeY0;
+  const dt=Date.now()-swipeT0 || 1;
+  const velY=dy/dt;
+  // swipe down: distance>60px OR fast flick downward
+  if (dy > 60 && Math.abs(dx) < 60 && (dy > 100 || velY > 0.3)) { closePlayer(); }
+  // swipe left/right: skip
+  else if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) { dx<0?playNext():playPrev(); }
+  swipeX0=swipeY0=swipeT0=null;
+}, {passive:true});
+
+/* ═══════════════════════════════════
+   CONTROLS
+═══════════════════════════════════ */
+document.getElementById('closeBtn').addEventListener('click', closePlayer);
+document.getElementById('ppBtn').addEventListener('click', togglePlay);
+document.getElementById('prevBtn').addEventListener('click', playPrev);
+document.getElementById('nextBtn').addEventListener('click', playNext);
+document.getElementById('shufBtn').addEventListener('click', () => {
+  shuffle=!shuffle; document.getElementById('shufBtn').classList.toggle('on', shuffle);
+});
+document.getElementById('loopBtn').addEventListener('click', () => {
+  loop=!loop; aud.loop=loop; document.getElementById('loopBtn').classList.toggle('on', loop);
+});
+document.getElementById('vol').addEventListener('input', e => { aud.volume=e.target.value; });
+
+// seek bar
+document.getElementById('pBar').addEventListener('click', e => {
+  const pct = (e.clientX - e.currentTarget.getBoundingClientRect().left) / e.currentTarget.offsetWidth;
+  if (tracks[idx]?.demo) demoT = pct*demoDur;
+  else if (aud.duration) aud.currentTime = pct*aud.duration;
+});
+
+/* ═══════════════════════════════════
+   GYROSCOPE — cross-platform 3D tilt
+   iOS 13+: permission on first open
+   Android: attaches on first user tap
+═══════════════════════════════════ */
+let gyroEnabled = false;
+let gyroBeta = 0, gyroGamma = 0;
+let gyroRawBeta = 0, gyroRawGamma = 0;
+let gyroRaf = null;
+let gyroBaseSet = false;
+let gyroBaseBeta = 0, gyroBaseGamma = 0;
+
+function onOrientationEvent(e) {
+  let b = e.beta  ?? 0;
+  let g = e.gamma ?? 0;
+
+  // on first event, capture baseline so effect is relative
+  // to however the user is holding the phone right now
+  if (!gyroBaseSet) {
+    gyroBaseBeta  = b;
+    gyroBaseGamma = g;
+    gyroBaseSet   = true;
+  }
+
+  // Android portrait: gamma is left/right (-90..90), beta is up/down (0..180)
+  // Normalise: subtract baseline so tilt is relative, not absolute
+  gyroRawBeta  = b - gyroBaseBeta;
+  gyroRawGamma = g - gyroBaseGamma;
+}
+
+function attachGyroListener() {
+  if (gyroEnabled) return;
+  gyroEnabled = true;
+  window.addEventListener('deviceorientation', onOrientationEvent, {passive:true});
+  if (!gyroRaf) tickGyro();
+}
+
+function startGyro() {
+  // iOS 13+ needs explicit permission triggered by a user gesture
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission()
+      .then(s => { if (s === 'granted') attachGyroListener(); })
+      .catch(() => {});
+  } else {
+    // Android / older iOS — attach directly, works after any user interaction
+    attachGyroListener();
+  }
+}
+
+function stopGyro() {
+  cancelAnimationFrame(gyroRaf);
+  gyroRaf = null;
+  // snap frame back
+  const frame = document.getElementById('artFrame');
+  if (frame) frame.style.transform = '';
+  const pbg = document.getElementById('pbg');
+  if (pbg) pbg.style.transform = 'scale(1.14)';
+  // reset baseline so next open re-calibrates
+  gyroBaseSet   = false;
+  gyroBeta      = 0;
+  gyroGamma     = 0;
+  gyroRawBeta   = 0;
+  gyroRawGamma  = 0;
+}
+
+function tickGyro() {
+  gyroRaf = requestAnimationFrame(tickGyro);
+  if (!document.getElementById('player').classList.contains('open')) return;
+
+  // lerp for inertia feel
+  const lp = 0.1;
+  gyroBeta  += (gyroRawBeta  - gyroBeta)  * lp;
+  gyroGamma += (gyroRawGamma - gyroGamma) * lp;
+
+  // clamp to ±25° of relative tilt
+  const clamp = (v, m) => Math.max(-m, Math.min(m, v));
+  const rx = clamp(gyroBeta,  25);
+  const ry = clamp(gyroGamma, 25);
+
+  // map to ±14° visual 3D rotation
+  const s   = 0.56;
+  const rotX = rx * s;
+  const rotY = ry * s;
+
+  const frame = document.getElementById('artFrame');
+  if (frame)
+    frame.style.transform = `rotateX(${(-rotX).toFixed(2)}deg) rotateY(${rotY.toFixed(2)}deg)`;
+
+  // background drifts opposite — parallax depth
+  const pbg = document.getElementById('pbg');
+  if (pbg)
+    pbg.style.transform = `scale(1.14) translate(${(ry*0.5).toFixed(2)}px,${(rx*0.5).toFixed(2)}px)`;
+}
+
+// hook into open/close
+const _origOpen  = openPlayer;
+const _origClose = closePlayer;
+openPlayer = function() {
+  _origOpen();
+  startGyro();
+};
+closePlayer = function() {
+  _origClose();
+  stopGyro();
+};
+document.addEventListener('keydown', e => {
+  if (document.activeElement.tagName === 'INPUT') {
+    if (e.key === 'Escape') { closeSearch(); document.activeElement.blur(); }
+    return;
+  }
+  switch (e.code) {
+    case 'Space':      e.preventDefault(); togglePlay(); break;
+    case 'ArrowRight': playNext(); break;
+    case 'ArrowLeft':  playPrev(); break;
+    case 'Slash':      e.preventDefault(); openSearch(); break;
+    case 'Escape':
+      if (searchOpen) closeSearch();
+      else closePlayer();
+      break;
+  }
+});
+</script>
+</body>
+</html>
