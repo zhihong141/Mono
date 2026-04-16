@@ -43,9 +43,9 @@ html, body { width:100%; height:100%; background:var(--white); color:var(--black
 .add-menu-item:hover { background:var(--off); }
 
 /* ── CANVAS ──────────────────────────────────── */
-#canvas-wrap { position:fixed; inset:0; overflow:hidden; opacity:0; transition:opacity .6s; background:var(--white); perspective:1200px; perspective-origin:50% 50%; }
+#canvas-wrap { position:fixed; inset:0; overflow:hidden; opacity:0; transition:opacity .6s; background:var(--white); }
 #canvas-wrap.visible { opacity:1; }
-#grid { position:absolute; top:0; left:0; will-change:transform; user-select:none; transform-style:preserve-3d; }
+#grid { position:absolute; top:0; left:0; will-change:transform; user-select:none; }
 
 /* top bar */
 .top-bar { position:fixed; top:0; left:0; right:0; height:48px; display:flex; align-items:center; padding:0 16px; z-index:50; background:var(--white); border-bottom:var(--border); gap:12px; }
@@ -593,14 +593,7 @@ function measureOverflow() {
    PAN + MOMENTUM  (listeners added once)
 ═══════════════════════════════════ */
 function setTransform() {
-  // if grid gyro is running, let tickGridGyro own the transform
-  // otherwise set plain translate
-  if (!gridGyroEnabled) {
-    document.getElementById('grid').style.transform = `translate(${panX}px,${panY}px)`;
-  } else {
-    // just update pan values — tickGridGyro will apply them with rotation next frame
-    panX = panX; panY = panY;
-  }
+  document.getElementById('grid').style.transform = `translate(${panX}px,${panY}px)`;
   checkNowDot();
 }
 
@@ -894,76 +887,6 @@ document.getElementById('pBar').addEventListener('click', e => {
   else if (aud.duration) aud.currentTime = pct*aud.duration;
 });
 
-/* ═══════════════════════════════════
-   GRID GYROSCOPE — subtle 3D lean
-   Cards tilt as a unit when phone tilts
-═══════════════════════════════════ */
-let gridGyroEnabled = false;
-let gridRawB = 0, gridRawG = 0;
-let gridSmoothB = 0, gridSmoothG = 0;
-let gridGyroBaseB = 0, gridGyroBaseG = 0;
-let gridGyroBaseSet = false;
-let gridGyroRaf = null;
-
-function onGridOrientation(e) {
-  if (!gridGyroBaseSet) {
-    gridGyroBaseB = e.beta  ?? 0;
-    gridGyroBaseG = e.gamma ?? 0;
-    gridGyroBaseSet = true;
-  }
-  gridRawB = (e.beta  ?? 0) - gridGyroBaseB;
-  gridRawG = (e.gamma ?? 0) - gridGyroBaseG;
-}
-
-function startGridGyro() {
-  if (gridGyroEnabled) return;
-
-  function attach() {
-    gridGyroEnabled = true;
-    window.addEventListener('deviceorientation', onGridOrientation, {passive:true});
-    tickGridGyro();
-  }
-
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    // iOS — permission already granted by player gyro, just attach
-    DeviceOrientationEvent.requestPermission()
-      .then(s => { if (s === 'granted') attach(); })
-      .catch(() => {});
-  } else {
-    attach(); // Android — no permission needed
-  }
-}
-
-function tickGridGyro() {
-  gridGyroRaf = requestAnimationFrame(tickGridGyro);
-
-  // only apply when canvas is visible and player is closed
-  const canvasVisible = document.getElementById('canvas-wrap').classList.contains('visible');
-  const playerOpen    = document.getElementById('player').classList.contains('open');
-  if (!canvasVisible || playerOpen) return;
-
-  const lp = 0.1; // slightly snappier
-  gridSmoothB += (gridRawB - gridSmoothB) * lp;
-  gridSmoothG += (gridRawG - gridSmoothG) * lp;
-
-  // clamp to ±30° of movement, map to ±15° visual lean
-  const clamp = (v, m) => Math.max(-m, Math.min(m, v));
-  const rx = clamp(gridSmoothB, 30) * 0.5;
-  const ry = clamp(gridSmoothG, 30) * 0.5;
-
-  document.getElementById('grid').style.transform =
-    `translate(${panX}px,${panY}px) rotateX(${(-rx).toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg)`;
-}
-
-// start grid gyro on first user interaction with the canvas
-document.getElementById('canvas-wrap').addEventListener('touchstart', () => {
-  startGridGyro();
-}, {once: true, passive: true});
-// also start on mouse move for desktop testing
-document.getElementById('canvas-wrap').addEventListener('mousemove', () => {
-  startGridGyro();
-}, {once: true});
 let gyroEnabled = false;
 let gyroBeta = 0, gyroGamma = 0;
 let gyroRawBeta = 0, gyroRawGamma = 0;
