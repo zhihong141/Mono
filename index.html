@@ -24,17 +24,28 @@ html, body { width:100%; height:100%; background:var(--white); color:var(--black
 .upload-box.drag { background:var(--off); }
 .upload-box h2 { font-family:'Unbounded',sans-serif; font-size:.8rem; font-weight:700; letter-spacing:.04em; margin-bottom:8px; }
 .upload-box p { font-size:.58rem; color:var(--mid); line-height:2; letter-spacing:.05em; font-style:italic; }
-#folderInput { display:none; }
+#folderInput, #filesInput { display:none; }
 .btn { display:block; width:100%; margin-top:20px; padding:13px 0; background:var(--black); color:var(--white); font-family:'Unbounded',sans-serif; font-size:.68rem; font-weight:700; letter-spacing:.12em; border:var(--border); cursor:pointer; text-align:center; position:relative; transition:transform .1s; }
 .btn::after { content:''; position:absolute; inset:0; border:var(--border); background:#777; transform:translate(4px,4px); z-index:-1; }
 .btn:hover { transform:translate(-1px,-1px); } .btn:active { transform:translate(2px,2px); }
 .btn-ghost { background:var(--white); color:var(--black); margin-top:10px; font-family:'IBM Plex Mono',monospace; font-size:.58rem; font-weight:300; letter-spacing:.1em; }
 .btn-ghost::after { display:none; } .btn-ghost:hover { background:var(--off); }
 
+/* top bar add-more button */
+.add-trigger { background:none; border:1.5px solid #ccc; color:var(--mid); font-family:'IBM Plex Mono',monospace; font-size:.55rem; letter-spacing:.1em; padding:5px 12px; cursor:pointer; display:flex; align-items:center; gap:6px; transition:border-color .15s,color .15s; flex-shrink:0; }
+.add-trigger:hover { border-color:var(--black); color:var(--black); }
+
+/* add-more sub-menu */
+#add-menu { position:fixed; top:50px; right:16px; background:var(--white); border:var(--border); box-shadow:4px 4px 0 #000; z-index:80; display:none; flex-direction:column; min-width:160px; }
+#add-menu.open { display:flex; }
+.add-menu-item { padding:11px 14px; font-family:'IBM Plex Mono',monospace; font-size:.58rem; letter-spacing:.08em; cursor:pointer; border-bottom:1px solid #eee; transition:background .12s; white-space:nowrap; background:none; border-left:none; border-right:none; border-top:none; text-align:left; color:var(--black); }
+.add-menu-item:last-child { border-bottom:none; }
+.add-menu-item:hover { background:var(--off); }
+
 /* ── CANVAS ──────────────────────────────────── */
-#canvas-wrap { position:fixed; inset:0; overflow:hidden; opacity:0; transition:opacity .6s; background:var(--white); }
+#canvas-wrap { position:fixed; inset:0; overflow:hidden; opacity:0; transition:opacity .6s; background:var(--white); perspective:1200px; perspective-origin:50% 50%; }
 #canvas-wrap.visible { opacity:1; }
-#grid { position:absolute; top:0; left:0; will-change:transform; user-select:none; }
+#grid { position:absolute; top:0; left:0; will-change:transform; user-select:none; transform-style:preserve-3d; }
 
 /* top bar */
 .top-bar { position:fixed; top:0; left:0; right:0; height:48px; display:flex; align-items:center; padding:0 16px; z-index:50; background:var(--white); border-bottom:var(--border); gap:12px; }
@@ -172,19 +183,32 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:10px; h
   <div class="l-sub">a music player</div>
   <div class="upload-box" id="dropZone">
     <h2>Load your music</h2>
-    <p>Select a folder or drop audio files<br>MP3 · FLAC · WAV · OGG · M4A · AAC</p>
+    <p>Drop files here, or select below<br>MP3 · FLAC · WAV · OGG · M4A · AAC</p>
+    <!-- folder picker — desktop + iOS Safari -->
     <input type="file" id="folderInput" webkitdirectory multiple accept="audio/*,.mp3,.flac,.wav,.ogg,.m4a,.aac,.opus">
-    <button class="btn" onclick="document.getElementById('folderInput').click()">SELECT FOLDER</button>
+    <!-- individual files — Android Chrome fallback -->
+    <input type="file" id="filesInput" multiple accept="audio/*,.mp3,.flac,.wav,.ogg,.m4a,.aac,.opus">
+    <button class="btn" id="folderBtn">SELECT FOLDER</button>
+    <button class="btn btn-ghost" id="filesBtn">SELECT FILES</button>
     <button class="btn btn-ghost" id="demoBtn">try demo</button>
   </div>
 </div>
 
 <!-- CANVAS -->
 <div id="canvas-wrap">
+  <!-- hidden inputs reused by add-more -->
+  <input type="file" id="addFolderInput" webkitdirectory multiple accept="audio/*,.mp3,.flac,.wav,.ogg,.m4a,.aac,.opus" style="display:none">
+  <input type="file" id="addFilesInput" multiple accept="audio/*,.mp3,.flac,.wav,.ogg,.m4a,.aac,.opus" style="display:none">
   <div class="top-bar">
     <span class="top-logo">MONO</span>
     <span class="track-count" id="tcount"></span>
     <button class="search-trigger" id="searchTrigger">SEARCH <kbd>/</kbd></button>
+    <button class="add-trigger" id="addTrigger">+ ADD</button>
+  </div>
+  <!-- add-more dropdown -->
+  <div id="add-menu">
+    <button class="add-menu-item" id="addFolderBtn">Folder</button>
+    <button class="add-menu-item" id="addFilesBtn">Files</button>
   </div>
   <div id="grid"></div>
   <div class="pan-hint" id="panHint">drag to explore</div>
@@ -362,9 +386,25 @@ const DEMO = [
 /* ═══════════════════════════════════
    FILE LOAD
 ═══════════════════════════════════ */
-document.getElementById('folderInput').addEventListener('change', e => {
-  const files = Array.from(e.target.files).filter(f =>
+function filterAudio(files) {
+  return Array.from(files).filter(f =>
     f.type.startsWith('audio/') || /\.(mp3|flac|wav|ogg|m4a|aac|opus)$/i.test(f.name));
+}
+
+document.getElementById('folderBtn').addEventListener('click', () =>
+  document.getElementById('folderInput').click());
+
+document.getElementById('filesBtn').addEventListener('click', () =>
+  document.getElementById('filesInput').click());
+
+document.getElementById('folderInput').addEventListener('change', e => {
+  const files = filterAudio(e.target.files);
+  if (!files.length) return alert('No audio files found.');
+  loadFiles(files);
+});
+
+document.getElementById('filesInput').addEventListener('change', e => {
+  const files = filterAudio(e.target.files);
   if (!files.length) return alert('No audio files found.');
   loadFiles(files);
 });
@@ -389,6 +429,56 @@ dz.addEventListener('drop', e => {
     .filter(f => f && (f.type.startsWith('audio/') || /\.(mp3|flac|wav|ogg|m4a|aac|opus)$/i.test(f.name)));
   if (files.length) loadFiles(files);
 });
+
+/* ── ADD MORE (from grid view) ─────────────────── */
+const addMenu = document.getElementById('add-menu');
+
+document.getElementById('addTrigger').addEventListener('click', e => {
+  e.stopPropagation();
+  addMenu.classList.toggle('open');
+});
+// close menu on outside click
+document.addEventListener('click', () => addMenu.classList.remove('open'));
+
+document.getElementById('addFolderBtn').addEventListener('click', () => {
+  addMenu.classList.remove('open');
+  document.getElementById('addFolderInput').click();
+});
+document.getElementById('addFilesBtn').addEventListener('click', () => {
+  addMenu.classList.remove('open');
+  document.getElementById('addFilesInput').click();
+});
+
+document.getElementById('addFolderInput').addEventListener('change', e => {
+  const files = filterAudio(e.target.files);
+  if (files.length) addFiles(files);
+  e.target.value = ''; // reset so same folder can be picked again
+});
+document.getElementById('addFilesInput').addEventListener('change', e => {
+  const files = filterAudio(e.target.files);
+  if (files.length) addFiles(files);
+  e.target.value = '';
+});
+
+function addFiles(files) {
+  const newTracks = files.map(f => {
+    const name = f.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+    return {
+      name, artist: '—',
+      url: URL.createObjectURL(f),
+      art: null,
+      pattern: makePatternSVG(name, false),
+      patternSmall: makePatternSVG(name, true),
+      demo: false
+    };
+  });
+  // deduplicate by name
+  const existing = new Set(tracks.map(t => t.name));
+  const fresh = newTracks.filter(t => !existing.has(t.name));
+  if (!fresh.length) return;
+  tracks = tracks.concat(fresh);
+  buildGrid();
+}
 
 function loadFiles(files) {
   tracks = files.map(f => {
@@ -484,7 +574,14 @@ function measureOverflow() {
    PAN + MOMENTUM  (listeners added once)
 ═══════════════════════════════════ */
 function setTransform() {
-  document.getElementById('grid').style.transform = `translate(${panX}px,${panY}px)`;
+  // if grid gyro is running, let tickGridGyro own the transform
+  // otherwise set plain translate
+  if (!gridGyroEnabled) {
+    document.getElementById('grid').style.transform = `translate(${panX}px,${panY}px)`;
+  } else {
+    // just update pan values — tickGridGyro will apply them with rotation next frame
+    panX = panX; panY = panY;
+  }
   checkNowDot();
 }
 
@@ -779,10 +876,75 @@ document.getElementById('pBar').addEventListener('click', e => {
 });
 
 /* ═══════════════════════════════════
-   GYROSCOPE — cross-platform 3D tilt
-   iOS 13+: permission on first open
-   Android: attaches on first user tap
+   GRID GYROSCOPE — subtle 3D lean
+   Cards tilt as a unit when phone tilts
 ═══════════════════════════════════ */
+let gridGyroEnabled = false;
+let gridRawB = 0, gridRawG = 0;
+let gridSmoothB = 0, gridSmoothG = 0;
+let gridGyroBaseB = 0, gridGyroBaseG = 0;
+let gridGyroBaseSet = false;
+let gridGyroRaf = null;
+
+function onGridOrientation(e) {
+  if (!gridGyroBaseSet) {
+    gridGyroBaseB = e.beta  ?? 0;
+    gridGyroBaseG = e.gamma ?? 0;
+    gridGyroBaseSet = true;
+  }
+  gridRawB = (e.beta  ?? 0) - gridGyroBaseB;
+  gridRawG = (e.gamma ?? 0) - gridGyroBaseG;
+}
+
+function startGridGyro() {
+  if (gridGyroEnabled) return;
+
+  function attach() {
+    gridGyroEnabled = true;
+    window.addEventListener('deviceorientation', onGridOrientation, {passive:true});
+    tickGridGyro();
+  }
+
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS — permission already granted by player gyro, just attach
+    DeviceOrientationEvent.requestPermission()
+      .then(s => { if (s === 'granted') attach(); })
+      .catch(() => {});
+  } else {
+    attach(); // Android — no permission needed
+  }
+}
+
+function tickGridGyro() {
+  gridGyroRaf = requestAnimationFrame(tickGridGyro);
+
+  // only apply when canvas is visible and player is closed
+  const canvasVisible = document.getElementById('canvas-wrap').classList.contains('visible');
+  const playerOpen    = document.getElementById('player').classList.contains('open');
+  if (!canvasVisible || playerOpen) return;
+
+  const lp = 0.07; // slower lerp = more floaty
+  gridSmoothB += (gridRawB - gridSmoothB) * lp;
+  gridSmoothG += (gridRawG - gridSmoothG) * lp;
+
+  // clamp to ±18° of movement, map to ±5° visual lean — subtle, not dizzying
+  const clamp = (v, m) => Math.max(-m, Math.min(m, v));
+  const rx = clamp(gridSmoothB, 18) * 0.28;
+  const ry = clamp(gridSmoothG, 18) * 0.28;
+
+  document.getElementById('grid').style.transform =
+    `translate(${panX}px,${panY}px) rotateX(${(-rx).toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg)`;
+}
+
+// start grid gyro on first user interaction with the canvas
+document.getElementById('canvas-wrap').addEventListener('touchstart', () => {
+  startGridGyro();
+}, {once: true, passive: true});
+// also start on mouse move for desktop testing
+document.getElementById('canvas-wrap').addEventListener('mousemove', () => {
+  startGridGyro();
+}, {once: true});
 let gyroEnabled = false;
 let gyroBeta = 0, gyroGamma = 0;
 let gyroRawBeta = 0, gyroRawGamma = 0;
