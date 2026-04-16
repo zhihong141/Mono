@@ -152,8 +152,12 @@ html, body { width:100%; height:100%; background:var(--white); color:var(--black
 .pb:last-child { border-right:none; }
 .pb:hover { background:rgba(255,255,255,.1); color:var(--white); }
 .pb:active { background:rgba(255,255,255,.18); }
+/* play button: white block when paused, inverts to black bg when playing */
 .pb.play-main { background:var(--white); color:var(--black); font-size:.9rem; border-right:2px solid #555; }
-.pb.play-main:hover { background:#ddd; } .pb.play-main:active { background:#bbb; }
+.pb.play-main:hover { background:#ddd; }
+.pb.play-main:active { background:#bbb; }
+.pb.play-main.is-playing { background:transparent; color:var(--white); border-left:none; }
+.pb.play-main.is-playing:hover { background:rgba(255,255,255,.1); }
 .pb.on { color:var(--white); }
 
 .p-vol { display:flex; align-items:center; gap:8px; width:100%; }
@@ -396,6 +400,21 @@ document.getElementById('folderBtn').addEventListener('click', () =>
 
 document.getElementById('filesBtn').addEventListener('click', () =>
   document.getElementById('filesInput').click());
+
+// detect Android WebView — webkitdirectory is broken inside APK WebViews
+// hide folder button and relabel files button for clarity
+(function detectWebView() {
+  const ua = navigator.userAgent || '';
+  const isWebView = /wv/.test(ua) ||                          // Android WebView flag
+    (/Android/.test(ua) && !/Chrome\/[.0-9]*/.test(ua)) ||   // Android without Chrome
+    (window.Android !== undefined);                            // injected native bridge
+  if (isWebView) {
+    document.getElementById('folderBtn').style.display = 'none';
+    document.getElementById('filesBtn').textContent = 'SELECT MUSIC FILES';
+    document.getElementById('filesBtn').className = 'btn'; // promote to primary style
+    document.getElementById('filesBtn').style.marginTop = '20px';
+  }
+})();
 
 document.getElementById('folderInput').addEventListener('change', e => {
   const files = filterAudio(e.target.files);
@@ -824,7 +843,7 @@ function updateUI(t) {
 function syncUI() {
   document.getElementById('ppBtn').textContent = playing ? '⏸' : '▶';
   document.getElementById('mPP').textContent   = playing ? '⏸' : '▶';
-  // mood: toggle paused-card class so breathe animation pauses
+  document.getElementById('ppBtn').classList.toggle('is-playing', playing);
   const playingCard = document.querySelector('.card.playing');
   if (playingCard) playingCard.classList.toggle('paused-card', !playing);
   checkNowDot();
@@ -924,14 +943,14 @@ function tickGridGyro() {
   const playerOpen    = document.getElementById('player').classList.contains('open');
   if (!canvasVisible || playerOpen) return;
 
-  const lp = 0.07; // slower lerp = more floaty
+  const lp = 0.1; // slightly snappier
   gridSmoothB += (gridRawB - gridSmoothB) * lp;
   gridSmoothG += (gridRawG - gridSmoothG) * lp;
 
-  // clamp to ±18° of movement, map to ±5° visual lean — subtle, not dizzying
+  // clamp to ±30° of movement, map to ±15° visual lean
   const clamp = (v, m) => Math.max(-m, Math.min(m, v));
-  const rx = clamp(gridSmoothB, 18) * 0.28;
-  const ry = clamp(gridSmoothG, 18) * 0.28;
+  const rx = clamp(gridSmoothB, 30) * 0.5;
+  const ry = clamp(gridSmoothG, 30) * 0.5;
 
   document.getElementById('grid').style.transform =
     `translate(${panX}px,${panY}px) rotateX(${(-rx).toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg)`;
